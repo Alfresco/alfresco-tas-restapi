@@ -58,7 +58,7 @@ public class RestInstanceModel
     /** Transactions remaining */
     private Long transactionsRemaining;
     
-    /** Stores */
+    /** Sharding Parameters */
     private String shardParams;
 
     /**
