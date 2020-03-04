@@ -77,1067 +77,955 @@ import io.restassured.specification.RequestSpecification;
 @SuppressWarnings("deprecation")
 @Service
 @Scope(value = "prototype")
-public class RestWrapper extends DSLWrapper<RestWrapper>
-{
-    private static final Integer IGNORE_CONTENT_LIMIT_BYTES = 4 * 1024 * 1024;
-
-    @Autowired
-    protected RestProperties restProperties;
-
-    private Logger LOG = LogFactory.getLogger();
-
-    private RequestSpecification request;
-    private RestErrorModel lastError;
-    private StatusModel lastStatusModel;
-    private Object lastException = ""; // handle values of last exception thrown
-    private UserModel currentUser;
-    private String statusCode;
-    private String parameters = "";
-    private ContentType defaultContentType = ContentType.JSON;
-    private RequestSpecBuilder requestSpecBuilder = new RequestSpecBuilder();
-    private Headers responseHeaders;
-    private RestResponse response;
-    private String serverURI;
-    private int serverPort;
-
-    /**
-     * After configuring {@link #setServerURI(String)} and {@link #setServerPort(int)} call {@link #configureServerEndpoint()}
-     *
-     * @param serverURI in format of "http://localhost", without port. Set port via {@link #setServerPort(int)}
-     */
-    public void setServerURI(String serverURI)
-    {
-        this.serverURI = serverURI;
-    }
-
-    public void setServerPort(int serverPort)
-    {
-        this.serverPort = serverPort;
-    }
-
-    @Autowired
-    private RestAisAuthentication aisAuthentication;
-
-    public void setResponseHeaders(Headers responseHeaders)
-    {
-        this.responseHeaders = responseHeaders;
-    }
-
-    public Headers getResponseHeaders()
-    {
-        return responseHeaders;
-    }
-
-    /**
-     * Verify response header contains a specific value
-     * Example:
-     * assertHeaderValueContains("Content-Disposition", "filename=\"myfile.txt\"");
-     * 
-     * @param headerName the header name from response
-     * @param expectedHeaderValue the header property value to be checked
-     * @return
-     */
-    public RestWrapper assertHeaderValueContains(String headerName, String expectedHeaderValue)
-    {
-        STEP(String.format("REST API: Assert that header value contains %s", expectedHeaderValue));
-        String actualHeaderValue = getResponseHeaders().getValue(headerName);
-        Assert.assertTrue(getResponseHeaders().getValue(headerName).contains(expectedHeaderValue),
-                String.format("Header %s is %s", headerName, actualHeaderValue));
-        return this;
-    }
-
-    @PostConstruct
-    public void initializeRequestSpecBuilder()
-    {
-        this.serverURI = restProperties.envProperty().getTestServerUrl();
-        this.serverPort = restProperties.envProperty().getPort();
-        configureServerEndpoint();
-    }
-
-    /**
-     * Authenticate specific user to Alfresco REST API
-     * 
-     * @param userModel
-     * @return
-     */
-    public RestWrapper authenticateUser(UserModel userModel)
-    {
-        STEP(String.format("REST API: Basic Authentication using user {%s}", userModel.toString()));
-        currentUser = userModel;
-        setTestUser(userModel);
-        return this;
-    }
-
-    public RestWrapper noAuthentication()
-    {
-        STEP("REST API: No Authentication");
-        currentUser = null;
-        setTestUser(null);
-        return this;
-    }
-
-    /**
-     * Request sent to server
-     */
-    protected RequestSpecification onRequest()
-    {
-        if (currentUser != null)
-        {
-            if(aisAuthentication.isAisAuthenticationEnabled())
-            {
-                configureRequestSpec().setAuth(oauth2(aisAuthentication.getAisAuthenticationToken(currentUser)));
-            }
-            else
-            {
-                configureRequestSpec().setAuth(basic(currentUser.getUsername(), currentUser.getPassword()));
-            }
-        }
-
-        request = given().spec(configureRequestSpec().build());
-
-        // reset to default as JSON
-        usingContentType(ContentType.JSON);
-        return request;
-    }
-
-    /**
-     * @return the last error model thrown if any
-     */
-    private RestErrorModel getLastError()
-    {
-        if (lastError == null)
-            return new RestErrorModel();
-        else
-            return lastError;
-    }
-
-    public void setLastError(RestErrorModel errorModel)
-    {
-        lastError = errorModel;
-    }
-
-    public RestErrorModel assertLastError()
-    {
-
-        return getLastError();
-    }
-
-    public StatusModel assertLastStatus()
-    {
-        return getLastStatus();
-    }
-
-    public RestWrapper assertLastExceptionContains(String exception)
-    {
-        if (!lastException.toString().contains(exception))
-            Assert.fail(String.format("Expected exception {%s} but found {%s}", exception, lastException));
-
-        return this;
-    }
-
-    /**
-     * Process responses for a collection of models as {@link RestSiteModelsCollection}
-     *
-     * @throws JsonToModelConversionException If the response cannot be converted to the given model.
-     * @throws EmptyJsonResponseException If there is no response from the server.
-     */
-
-    public <T> T processModels(Class<T> classz, RestRequest restRequest)
-            throws EmptyJsonResponseException, JsonToModelConversionException
-    {
-        Response returnedResponse = sendRequest(restRequest);
-
-        setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
-
-        boolean responseHasErrors = checkForJsonError(returnedResponse);
-        boolean responseHasExceptions = checkForJsonStatusException(returnedResponse);
-
-        T models = null;
-
-        if (!responseHasExceptions && !responseHasErrors)
-        {
-            try
-            {
-                models = returnedResponse.jsonPath().getObject("list", classz);
-                validateJsonModelSchema(classz, models);
-            }
-            catch (Exception processError)
-            {
-            	processError.printStackTrace();
-            	throw new JsonToModelConversionException(classz, processError);
-            }
-        }
-
-        if (models == null)
-        {
-            try
-            {
-                return classz.getDeclaredConstructor().newInstance();
-            }
-            catch (Exception e)
-            {
-                e.printStackTrace();
-            }
-        }
-
-        return models;
-    }
-
-    /**
-     * Process responses for a single model as {@link RestSiteModel}
-     *
-     * @throws JsonToModelConversionException If the response cannot be converted to the given model.
-     * @throws EmptyJsonResponseException If there is no response from the server.
-     */
-    public <T> T processModel(Class<T> classz, RestRequest restRequest)
-            throws EmptyJsonResponseException, JsonToModelConversionException
-    {
-        Response returnedResponse = sendRequest(restRequest);
-
-        setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
-
-        boolean responseHasErrors = checkForJsonError(returnedResponse);
-        boolean responseHasExceptions = checkForJsonStatusException(returnedResponse);
-
-        T model = null;
-
-        try
-        {
-            if (!responseHasExceptions && !responseHasErrors)
-            {
-                model = returnedResponse.jsonPath().getObject("entry", classz);
-                validateJsonModelSchema(classz, model);
-            }
-        }
-        catch (Exception processError)
-        {
-            throw new JsonToModelConversionException(classz, processError);
-        }
-        if (model == null)
-        {
-            try
-            {
-                return classz.newInstance();
-            }
-            catch (Exception e)
-            {
-                e.printStackTrace();
-            }
-        }
-
-        return model;
-    }
-
-    /**
-     * Process responses for a single model as {@link RestSiteModel}
-     *
-     * @throws JsonToModelConversionException If the response cannot be converted to the given model.
-     * @throws EmptyJsonResponseException If there is no response from the server.
-     */
-    public JSONObject processJson(RestRequest restRequest)
-            throws EmptyJsonResponseException, JsonToModelConversionException
-    {
-        Response returnedResponse = sendRequest(restRequest);
-
-        setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
-
-        boolean responseHasErrors = checkForJsonError(returnedResponse);
-        boolean responseHasExceptions = checkForJsonStatusException(returnedResponse);
-
-        JSONObject response = null;
-
-        try
-        {
-            if (!responseHasExceptions && !responseHasErrors)
-            {
-                JSONObject jsonObject = new JSONObject(returnedResponse.getBody().asString());
-                response = jsonObject.getJSONObject("entry");
-            }
-        }
-        catch (Exception processError)
-        {
-            throw new EmptyJsonResponseException(processError.getMessage());
-        }
-
-        return response;
-    }
-
-    /**
-     * Process responses for site relations models, such as {@link RestSiteModel, RestSiteContainerModelsCollection, RestSiteMemberModelsCollection}
-     */
-    public List<Object> processRelationsJson(RestRequest restRequest)
-    {
-        List<Object> jsonObjects = new ArrayList<Object>();
-        Response returnedResponse = sendRequest(restRequest);
-
-        setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
-
-        boolean responseHasErrors = checkForJsonError(returnedResponse);
-        boolean responseHasExceptions = checkForJsonStatusException(returnedResponse);
-
-        ObjectMapper mapper = new ObjectMapper();
-        JSONObject response = null;
-
-        try
-        {
-            if (!responseHasExceptions && !responseHasErrors)
-            {
-                JSONObject jsonObject = new JSONObject(returnedResponse.getBody().asString());
-
-                response = jsonObject.getJSONObject("entry");
-                RestSiteModel site = mapper.readValue(response.toString(), RestSiteModel.class);
-                jsonObjects.add(site);
-
-                if (!jsonObject.getJSONObject("relations").isNull("containers"))
-                {
-                    response = jsonObject.getJSONObject("relations").getJSONObject("containers").getJSONObject("list");
-                    RestSiteContainerModelsCollection containers = mapper.readValue(response.toString(),
-                            RestSiteContainerModelsCollection.class);
-                    jsonObjects.add(containers);
-                }
-
-                if (!jsonObject.getJSONObject("relations").isNull("members"))
-                {
-                    response = jsonObject.getJSONObject("relations").getJSONObject("members").getJSONObject("list");
-                    RestSiteMemberModelsCollection members = mapper.readValue(response.toString(),
-                            RestSiteMemberModelsCollection.class);
-                    jsonObjects.add(members);
-                }
-            }
-        }
-        catch (Exception processError)
-        {
-            throw new EmptyJsonResponseException(processError.getMessage());
-        }
-
-        return jsonObjects;
-    }
-
-    /**
-     * Process responses for site relations models, such as {@link RestSiteModel, RestSiteContainerModelsCollection, RestSiteMemberModelsCollection}
-     */
-    public List<List<Object>> processSitesRelationsJson(RestRequest restRequest)
-    {
-        List<List<Object>> allObjects = new ArrayList<List<Object>>();
-        List<Object> sitesList = new ArrayList<Object>();
-        List<Object> containersList = new ArrayList<Object>();
-        List<Object> membersList = new ArrayList<Object>();
-
-        Response returnedResponse = sendRequest(restRequest);
-
-        setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
-
-        boolean responseHasErrors = checkForJsonError(returnedResponse);
-        boolean responseHasExceptions = checkForJsonStatusException(returnedResponse);
-
-        ObjectMapper mapper = new ObjectMapper();
-        JSONObject response = null;
-
-        try
-        {
-            if (!responseHasExceptions && !responseHasErrors)
-            {
-                JSONObject jsonObject = new JSONObject(returnedResponse.getBody().asString());
-
-                if (jsonObject.getJSONObject("list").getJSONArray("entries").length() != 0)
-                {
-                    {
-                        for (int i = 0; i < jsonObject.getJSONObject("list").getJSONArray("entries").length(); i++)
-                        {
-                            response = jsonObject.getJSONObject("list").getJSONArray("entries").getJSONObject(i)
-                                    .getJSONObject("entry");
-                            RestSiteModel site = mapper.readValue(response.toString(), RestSiteModel.class);
-                            sitesList.add(site);
-                        }
-
-                        allObjects.add(sitesList);
-                    }
-
-                    if (jsonObject.toString().contains("containers"))
-                    {
-                        for (int i = 0; i < jsonObject.getJSONObject("list").getJSONArray("entries").length(); i++)
-                        {
-                            response = jsonObject.getJSONObject("list").getJSONArray("entries").getJSONObject(i)
-                                    .getJSONObject("relations").getJSONObject("containers").getJSONObject("list");
-                            RestSiteContainerModelsCollection containers = mapper.readValue(response.toString(),
-                                    RestSiteContainerModelsCollection.class);
-                            containersList.add(containers);
-                        }
-
-                        allObjects.add(containersList);
-                    }
-
-                    if (jsonObject.toString().contains("members"))
-                    {
-                        for (int i = 0; i < jsonObject.getJSONObject("list").getJSONArray("entries").length(); i++)
-                        {
-                            response = jsonObject.getJSONObject("list").getJSONArray("entries").getJSONObject(i)
-                                    .getJSONObject("relations").getJSONObject("members").getJSONObject("list");
-                            RestSiteMemberModelsCollection members = mapper.readValue(response.toString(),
-                                    RestSiteMemberModelsCollection.class);
-                            membersList.add(members);
-                        }
-
-                        allObjects.add(membersList);
-                    }
-                }
-            }
-        }
-        catch (Exception processError)
-        {
-            throw new EmptyJsonResponseException(processError.getMessage());
-        }
-
-        return allObjects;
-    }
-
-    /**
-     * Process a response that returns a html
-     *
-     * @param restRequest
-     * @return
-     * @throws EmptyJsonResponseException If there is no response from the server.
-     */
-    public RestHtmlResponse processHtmlResponse(RestRequest restRequest) throws EmptyJsonResponseException
-    {
-        Response returnedResponse = sendRequest(restRequest);
-
-        setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
-
-        if (returnedResponse.contentType().contains("json"))
-        {
-            checkForJsonError(returnedResponse);
-            checkForJsonStatusException(returnedResponse);
-        }
-
-        return new RestHtmlResponse(returnedResponse.getHeaders(), returnedResponse.getBody());
-    }
-
-    /**
-     * Generic REST API call on a {@link RestRequest}
-     * 
-     * @param restRequest
-     * @return
-     */
-    public RestResponse process(RestRequest restRequest)
-    {
-        Response returnedResponse = sendRequest(restRequest);
-        setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
-        RestResponse response = new RestResponse(returnedResponse);
-        setResponseHeaders(response.getResponse().getHeaders());
-        return response;
-    }
-
-    public RestTextResponse processTextResponse(RestRequest restRequest)
-    {
-        Response returnedResponse = sendRequest(restRequest);
-        setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
-        if (returnedResponse.contentType().contains("text/plain"))
-        {
-            RestAssured.registerParser("text/plain", Parser.TEXT);
-
-            RestTextResponse testResponse = new RestTextResponse(returnedResponse);
-            return testResponse;
-        }
-
-        RestResponse response = new RestResponse(returnedResponse);
-        setResponseHeaders(response.getResponse().getHeaders());
-        RestTextResponse testResponse = new RestTextResponse(returnedResponse);
-        return testResponse;
-    }
-
-    /**
-     * Process a response that has no body - basically will need only the status code from it
-     * 
-     * @param restRequest
-     * @throws EmptyJsonResponseException
-     */
-    public void processEmptyModel(RestRequest restRequest) throws EmptyJsonResponseException
-    {
-        Response returnedResponse = sendRequest(restRequest);
-        setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
-
-        if (!returnedResponse.asString().isEmpty())
-        {
-            checkForJsonError(returnedResponse);
-            checkForJsonStatusException(returnedResponse);
-        }
-
-    }
-
-    public StatusModel getLastStatus()
-    {
-        return lastStatusModel;
-    }
-
-    /**
-     * Set the status code for the latest REST call
-     * 
-     * @param lastStatusModel
-     */
-    public void setLastStatus(StatusModel lastStatusModel)
-    {
-        this.lastStatusModel = lastStatusModel;
-    }
-
-    public String getStatusCode()
-    {
-        return statusCode;
-    }
-
-    public void setStatusCode(String statusCode)
-    {
-        this.statusCode = statusCode;
-    }
-
-    /**
-     * Send REST request based on HTTP method
-     * 
-     * @param restRequest
-     * @return
-     */
-    protected Response sendRequest(RestRequest restRequest)
-    {
-        Response returnedResponse = null;
-        switch (restRequest.getHttpMethod())
-        {
-            case GET:
-                returnedResponse = onRequest().get(restRequest.getPath(), restRequest.getPathParams()).andReturn();
-                break;
-            case DELETE:
-                returnedResponse = onRequest().delete(restRequest.getPath(), restRequest.getPathParams()).andReturn();
-                break;
-
-            case HEAD:
-                returnedResponse = onRequest().head(restRequest.getPath(), restRequest.getPathParams()).andReturn();
-                break;
-            case OPTIONS:
-                returnedResponse = onRequest().options(restRequest.getPath(), restRequest.getPathParams()).andReturn();
-                break;
-            case POST:
-                returnedResponse = onRequest().body(restRequest.getBody())
-                        .post(restRequest.getPath(), restRequest.getPathParams()).andReturn();
-                break;
-            case PUT:
-                returnedResponse = onRequest().body(restRequest.getBody())
-                        .contentType(ContentType.JSON.withCharset(restRequest.getContentType()))
-                        .put(restRequest.getPath(), restRequest.getPathParams()).andReturn();
-                break;
-            case TRACE:
-                returnedResponse = onRequest().get(restRequest.getPath(), restRequest.getPathParams()).andReturn();
-                break;
-            default:
-                returnedResponse = onRequest().get(restRequest.getPath(), restRequest.getPathParams()).andReturn();
-                break;
-        }
-
-        logResponseInformation(restRequest, returnedResponse);
-
-        configureServerEndpoint();
-        response = new RestResponse(returnedResponse);
-        return returnedResponse;
-    }
-
-    private void logResponseInformation(RestRequest restRequest, Response returnedResponse)
-    {
-        String responseSizeString = returnedResponse.getHeader("Content-Length");
-        if (responseSizeString != null && Integer.valueOf(responseSizeString) > IGNORE_CONTENT_LIMIT_BYTES)
-        {
-            LOG.info("On {} {}, received a response size that was {} bytes.\n"
-                    + "This is bigger than the limit of {} bytes so its content will not be displayed: \n", restRequest.getHttpMethod(),
-                restRequest.getPath(), Integer.valueOf(responseSizeString), IGNORE_CONTENT_LIMIT_BYTES);
-        }
-        else
-        {
-            if (returnedResponse.getContentType().contains("image/png"))
-            {
-                LOG.info("On {} {}, received the response with an image and headers: \n{}", restRequest.getHttpMethod(), restRequest.getPath(),
-                    returnedResponse.getHeaders().toString());
-            }
-            else if (returnedResponse.getContentType().contains("application/json") && !returnedResponse.asString().isEmpty())
-            {
-                LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(), restRequest.getPath(),
-                    Utility.prettyPrintJsonString(returnedResponse.asString()));
-            }
-            else if (returnedResponse.getContentType().contains("application/xml") && !returnedResponse.asString().isEmpty())
-            {
-                String response = parseXML(returnedResponse);
-                LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(), restRequest.getPath(), response);
-            }
-            else
-            {
-                LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(), restRequest.getPath(),
-                    ToStringBuilder.reflectionToString(returnedResponse.asString(), ToStringStyle.MULTI_LINE_STYLE));
-            }
-        }
-    }
-
-    private String parseXML(Response returnedResponse)
-    {
-        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-        String result = "";
-        try
-        {
-            DocumentBuilder db = dbf.newDocumentBuilder();
-            InputSource is = new InputSource(new StringReader(returnedResponse.asString()));
-            Document document = db.parse(is);
-            
+public class RestWrapper extends DSLWrapper<RestWrapper> {
+	private static final Integer IGNORE_CONTENT_LIMIT_BYTES = 4 * 1024 * 1024;
+
+	@Autowired
+	protected RestProperties restProperties;
+
+	private Logger LOG = LogFactory.getLogger();
+
+	private RequestSpecification request;
+	private RestErrorModel lastError;
+	private StatusModel lastStatusModel;
+	private Object lastException = ""; // handle values of last exception thrown
+	private UserModel currentUser;
+	private String statusCode;
+	private String parameters = "";
+	private ContentType defaultContentType = ContentType.JSON;
+	private RequestSpecBuilder requestSpecBuilder = new RequestSpecBuilder();
+	private Headers responseHeaders;
+	private RestResponse response;
+	private String serverURI;
+	private int serverPort;
+
+	/**
+	 * After configuring {@link #setServerURI(String)} and
+	 * {@link #setServerPort(int)} call {@link #configureServerEndpoint()}
+	 *
+	 * @param serverURI in format of "http://localhost", without port. Set port via
+	 *                  {@link #setServerPort(int)}
+	 */
+	public void setServerURI(String serverURI) {
+		this.serverURI = serverURI;
+	}
+
+	public void setServerPort(int serverPort) {
+		this.serverPort = serverPort;
+	}
+
+	@Autowired
+	private RestAisAuthentication aisAuthentication;
+
+	public void setResponseHeaders(Headers responseHeaders) {
+		this.responseHeaders = responseHeaders;
+	}
+
+	public Headers getResponseHeaders() {
+		return responseHeaders;
+	}
+
+	/**
+	 * Verify response header contains a specific value Example:
+	 * assertHeaderValueContains("Content-Disposition", "filename=\"myfile.txt\"");
+	 * 
+	 * @param headerName          the header name from response
+	 * @param expectedHeaderValue the header property value to be checked
+	 * @return
+	 */
+	public RestWrapper assertHeaderValueContains(String headerName, String expectedHeaderValue) {
+		STEP(String.format("REST API: Assert that header value contains %s", expectedHeaderValue));
+		String actualHeaderValue = getResponseHeaders().getValue(headerName);
+		Assert.assertTrue(getResponseHeaders().getValue(headerName).contains(expectedHeaderValue),
+				String.format("Header %s is %s", headerName, actualHeaderValue));
+		return this;
+	}
+
+	@PostConstruct
+	public void initializeRequestSpecBuilder() {
+		this.serverURI = restProperties.envProperty().getTestServerUrl();
+		this.serverPort = restProperties.envProperty().getPort();
+		configureServerEndpoint();
+	}
+
+	/**
+	 * Authenticate specific user to Alfresco REST API
+	 * 
+	 * @param userModel
+	 * @return
+	 */
+	public RestWrapper authenticateUser(UserModel userModel) {
+		STEP(String.format("REST API: Basic Authentication using user {%s}", userModel.toString()));
+		currentUser = userModel;
+		setTestUser(userModel);
+		return this;
+	}
+
+	public RestWrapper noAuthentication() {
+		STEP("REST API: No Authentication");
+		currentUser = null;
+		setTestUser(null);
+		return this;
+	}
+
+	/**
+	 * Request sent to server
+	 */
+	protected RequestSpecification onRequest() {
+		if (currentUser != null) {
+			if (aisAuthentication.isAisAuthenticationEnabled()) {
+				configureRequestSpec().setAuth(oauth2(aisAuthentication.getAisAuthenticationToken(currentUser)));
+			} else {
+				configureRequestSpec().setAuth(basic(currentUser.getUsername(), currentUser.getPassword()));
+			}
+		}
+
+		request = given().spec(configureRequestSpec().build());
+
+		// reset to default as JSON
+		usingContentType(ContentType.JSON);
+		return request;
+	}
+
+	/**
+	 * @return the last error model thrown if any
+	 */
+	private RestErrorModel getLastError() {
+		if (lastError == null)
+			return new RestErrorModel();
+		else
+			return lastError;
+	}
+
+	public void setLastError(RestErrorModel errorModel) {
+		lastError = errorModel;
+	}
+
+	public RestErrorModel assertLastError() {
+
+		return getLastError();
+	}
+
+	public StatusModel assertLastStatus() {
+		return getLastStatus();
+	}
+
+	public RestWrapper assertLastExceptionContains(String exception) {
+		if (!lastException.toString().contains(exception))
+			Assert.fail(String.format("Expected exception {%s} but found {%s}", exception, lastException));
+
+		return this;
+	}
+
+	/**
+	 * Process responses for a collection of models as
+	 * {@link RestSiteModelsCollection}
+	 *
+	 * @throws JsonToModelConversionException If the response cannot be converted to
+	 *                                        the given model.
+	 * @throws EmptyJsonResponseException     If there is no response from the
+	 *                                        server.
+	 */
+
+	public <T> T processModels(Class<T> classz, RestRequest restRequest)
+			throws EmptyJsonResponseException, JsonToModelConversionException {
+		Response returnedResponse = sendRequest(restRequest);
+
+		setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
+
+		boolean responseHasErrors = checkForJsonError(returnedResponse);
+		boolean responseHasExceptions = checkForJsonStatusException(returnedResponse);
+
+		T models = null;
+
+		if (!responseHasExceptions && !responseHasErrors) {
+			try {
+				models = returnedResponse.jsonPath().getObject("list", classz);
+				validateJsonModelSchema(classz, models);
+			} catch (Exception processError) {
+				processError.printStackTrace();
+				throw new JsonToModelConversionException(classz, processError);
+			}
+		}
+
+		if (models == null) {
+			try {
+				return classz.getDeclaredConstructor().newInstance();
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+
+		return models;
+	}
+
+	/**
+	 * Process responses for a single model as {@link RestSiteModel}
+	 *
+	 * @throws JsonToModelConversionException If the response cannot be converted to
+	 *                                        the given model.
+	 * @throws EmptyJsonResponseException     If there is no response from the
+	 *                                        server.
+	 */
+	public <T> T processModel(Class<T> classz, RestRequest restRequest)
+			throws EmptyJsonResponseException, JsonToModelConversionException {
+		Response returnedResponse = sendRequest(restRequest);
+
+		setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
+
+		boolean responseHasErrors = checkForJsonError(returnedResponse);
+		boolean responseHasExceptions = checkForJsonStatusException(returnedResponse);
+
+		T model = null;
+
+		try {
+			if (!responseHasExceptions && !responseHasErrors) {
+				model = returnedResponse.jsonPath().getObject("entry", classz);
+				validateJsonModelSchema(classz, model);
+			}
+		} catch (Exception processError) {
+			throw new JsonToModelConversionException(classz, processError);
+		}
+		if (model == null) {
+			try {
+				return classz.newInstance();
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+
+		return model;
+	}
+
+	/**
+	 * Process responses for a single model as {@link RestSiteModel}
+	 *
+	 * @throws JsonToModelConversionException If the response cannot be converted to
+	 *                                        the given model.
+	 * @throws EmptyJsonResponseException     If there is no response from the
+	 *                                        server.
+	 */
+	public JSONObject processJson(RestRequest restRequest)
+			throws EmptyJsonResponseException, JsonToModelConversionException {
+		Response returnedResponse = sendRequest(restRequest);
+
+		setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
+
+		boolean responseHasErrors = checkForJsonError(returnedResponse);
+		boolean responseHasExceptions = checkForJsonStatusException(returnedResponse);
+
+		JSONObject response = null;
+
+		try {
+			if (!responseHasExceptions && !responseHasErrors) {
+				JSONObject jsonObject = new JSONObject(returnedResponse.getBody().asString());
+				response = jsonObject.getJSONObject("entry");
+			}
+		} catch (Exception processError) {
+			throw new EmptyJsonResponseException(processError.getMessage());
+		}
+
+		return response;
+	}
+
+	/**
+	 * Process responses for site relations models, such as {@link RestSiteModel,
+	 * RestSiteContainerModelsCollection, RestSiteMemberModelsCollection}
+	 */
+	public List<Object> processRelationsJson(RestRequest restRequest) {
+		List<Object> jsonObjects = new ArrayList<Object>();
+		Response returnedResponse = sendRequest(restRequest);
+
+		setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
+
+		boolean responseHasErrors = checkForJsonError(returnedResponse);
+		boolean responseHasExceptions = checkForJsonStatusException(returnedResponse);
+
+		ObjectMapper mapper = new ObjectMapper();
+		JSONObject response = null;
+
+		try {
+			if (!responseHasExceptions && !responseHasErrors) {
+				JSONObject jsonObject = new JSONObject(returnedResponse.getBody().asString());
+
+				response = jsonObject.getJSONObject("entry");
+				RestSiteModel site = mapper.readValue(response.toString(), RestSiteModel.class);
+				jsonObjects.add(site);
+
+				if (!jsonObject.getJSONObject("relations").isNull("containers")) {
+					response = jsonObject.getJSONObject("relations").getJSONObject("containers").getJSONObject("list");
+					RestSiteContainerModelsCollection containers = mapper.readValue(response.toString(),
+							RestSiteContainerModelsCollection.class);
+					jsonObjects.add(containers);
+				}
+
+				if (!jsonObject.getJSONObject("relations").isNull("members")) {
+					response = jsonObject.getJSONObject("relations").getJSONObject("members").getJSONObject("list");
+					RestSiteMemberModelsCollection members = mapper.readValue(response.toString(),
+							RestSiteMemberModelsCollection.class);
+					jsonObjects.add(members);
+				}
+			}
+		} catch (Exception processError) {
+			throw new EmptyJsonResponseException(processError.getMessage());
+		}
+
+		return jsonObjects;
+	}
+
+	/**
+	 * Process responses for site relations models, such as {@link RestSiteModel,
+	 * RestSiteContainerModelsCollection, RestSiteMemberModelsCollection}
+	 */
+	public List<List<Object>> processSitesRelationsJson(RestRequest restRequest) {
+		List<List<Object>> allObjects = new ArrayList<List<Object>>();
+		List<Object> sitesList = new ArrayList<Object>();
+		List<Object> containersList = new ArrayList<Object>();
+		List<Object> membersList = new ArrayList<Object>();
+
+		Response returnedResponse = sendRequest(restRequest);
+
+		setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
+
+		boolean responseHasErrors = checkForJsonError(returnedResponse);
+		boolean responseHasExceptions = checkForJsonStatusException(returnedResponse);
+
+		ObjectMapper mapper = new ObjectMapper();
+		JSONObject response = null;
+
+		try {
+			if (!responseHasExceptions && !responseHasErrors) {
+				JSONObject jsonObject = new JSONObject(returnedResponse.getBody().asString());
+
+				if (jsonObject.getJSONObject("list").getJSONArray("entries").length() != 0) {
+					{
+						for (int i = 0; i < jsonObject.getJSONObject("list").getJSONArray("entries").length(); i++) {
+							response = jsonObject.getJSONObject("list").getJSONArray("entries").getJSONObject(i)
+									.getJSONObject("entry");
+							RestSiteModel site = mapper.readValue(response.toString(), RestSiteModel.class);
+							sitesList.add(site);
+						}
+
+						allObjects.add(sitesList);
+					}
+
+					if (jsonObject.toString().contains("containers")) {
+						for (int i = 0; i < jsonObject.getJSONObject("list").getJSONArray("entries").length(); i++) {
+							response = jsonObject.getJSONObject("list").getJSONArray("entries").getJSONObject(i)
+									.getJSONObject("relations").getJSONObject("containers").getJSONObject("list");
+							RestSiteContainerModelsCollection containers = mapper.readValue(response.toString(),
+									RestSiteContainerModelsCollection.class);
+							containersList.add(containers);
+						}
+
+						allObjects.add(containersList);
+					}
+
+					if (jsonObject.toString().contains("members")) {
+						for (int i = 0; i < jsonObject.getJSONObject("list").getJSONArray("entries").length(); i++) {
+							response = jsonObject.getJSONObject("list").getJSONArray("entries").getJSONObject(i)
+									.getJSONObject("relations").getJSONObject("members").getJSONObject("list");
+							RestSiteMemberModelsCollection members = mapper.readValue(response.toString(),
+									RestSiteMemberModelsCollection.class);
+							membersList.add(members);
+						}
+
+						allObjects.add(membersList);
+					}
+				}
+			}
+		} catch (Exception processError) {
+			throw new EmptyJsonResponseException(processError.getMessage());
+		}
+
+		return allObjects;
+	}
+
+	/**
+	 * Process a response that returns a html
+	 *
+	 * @param restRequest
+	 * @return
+	 * @throws EmptyJsonResponseException If there is no response from the server.
+	 */
+	public RestHtmlResponse processHtmlResponse(RestRequest restRequest) throws EmptyJsonResponseException {
+		Response returnedResponse = sendRequest(restRequest);
+
+		setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
+
+		if (returnedResponse.contentType().contains("json")) {
+			checkForJsonError(returnedResponse);
+			checkForJsonStatusException(returnedResponse);
+		}
+
+		return new RestHtmlResponse(returnedResponse.getHeaders(), returnedResponse.getBody());
+	}
+
+	/**
+	 * Generic REST API call on a {@link RestRequest}
+	 * 
+	 * @param restRequest
+	 * @return
+	 */
+	public RestResponse process(RestRequest restRequest) {
+		Response returnedResponse = sendRequest(restRequest);
+		setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
+		RestResponse response = new RestResponse(returnedResponse);
+		setResponseHeaders(response.getResponse().getHeaders());
+		return response;
+	}
+
+	public RestTextResponse processTextResponse(RestRequest restRequest) {
+		Response returnedResponse = sendRequest(restRequest);
+		setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
+		if (returnedResponse.contentType().contains("text/plain")) {
+			RestAssured.registerParser("text/plain", Parser.TEXT);
+
+			RestTextResponse testResponse = new RestTextResponse(returnedResponse);
+			return testResponse;
+		}
+
+		RestResponse response = new RestResponse(returnedResponse);
+		setResponseHeaders(response.getResponse().getHeaders());
+		RestTextResponse testResponse = new RestTextResponse(returnedResponse);
+		return testResponse;
+	}
+
+	/**
+	 * Process a response that has no body - basically will need only the status
+	 * code from it
+	 * 
+	 * @param restRequest
+	 * @throws EmptyJsonResponseException
+	 */
+	public void processEmptyModel(RestRequest restRequest) throws EmptyJsonResponseException {
+		Response returnedResponse = sendRequest(restRequest);
+		setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
+
+		if (!returnedResponse.asString().isEmpty()) {
+			checkForJsonError(returnedResponse);
+			checkForJsonStatusException(returnedResponse);
+		}
+
+	}
+
+	public StatusModel getLastStatus() {
+		return lastStatusModel;
+	}
+
+	/**
+	 * Set the status code for the latest REST call
+	 * 
+	 * @param lastStatusModel
+	 */
+	public void setLastStatus(StatusModel lastStatusModel) {
+		this.lastStatusModel = lastStatusModel;
+	}
+
+	public String getStatusCode() {
+		return statusCode;
+	}
+
+	public void setStatusCode(String statusCode) {
+		this.statusCode = statusCode;
+	}
+
+	/**
+	 * Send REST request based on HTTP method
+	 * 
+	 * @param restRequest
+	 * @return
+	 */
+	protected Response sendRequest(RestRequest restRequest) {
+		Response returnedResponse = null;
+		switch (restRequest.getHttpMethod()) {
+		case GET:
+			returnedResponse = onRequest().get(restRequest.getPath(), restRequest.getPathParams()).andReturn();
+			break;
+		case DELETE:
+			returnedResponse = onRequest().delete(restRequest.getPath(), restRequest.getPathParams()).andReturn();
+			break;
+
+		case HEAD:
+			returnedResponse = onRequest().head(restRequest.getPath(), restRequest.getPathParams()).andReturn();
+			break;
+		case OPTIONS:
+			returnedResponse = onRequest().options(restRequest.getPath(), restRequest.getPathParams()).andReturn();
+			break;
+		case POST:
+			returnedResponse = onRequest().body(restRequest.getBody())
+					.post(restRequest.getPath(), restRequest.getPathParams()).andReturn();
+			break;
+		case PUT:
+			returnedResponse = onRequest().body(restRequest.getBody())
+					.contentType(ContentType.JSON.withCharset(restRequest.getContentType()))
+					.put(restRequest.getPath(), restRequest.getPathParams()).andReturn();
+			break;
+		case TRACE:
+			returnedResponse = onRequest().get(restRequest.getPath(), restRequest.getPathParams()).andReturn();
+			break;
+		default:
+			returnedResponse = onRequest().get(restRequest.getPath(), restRequest.getPathParams()).andReturn();
+			break;
+		}
+
+		logResponseInformation(restRequest, returnedResponse);
+
+		configureServerEndpoint();
+		response = new RestResponse(returnedResponse);
+		return returnedResponse;
+	}
+
+	private void logResponseInformation(RestRequest restRequest, Response returnedResponse) {
+		String responseSizeString = returnedResponse.getHeader("Content-Length");
+		if (responseSizeString != null && Integer.valueOf(responseSizeString) > IGNORE_CONTENT_LIMIT_BYTES) {
+			LOG.info(
+					"On {} {}, received a response size that was {} bytes.\n"
+							+ "This is bigger than the limit of {} bytes so its content will not be displayed: \n",
+					restRequest.getHttpMethod(), restRequest.getPath(), Integer.valueOf(responseSizeString),
+					IGNORE_CONTENT_LIMIT_BYTES);
+		} else {
+			if (returnedResponse.getContentType().contains("image/png")) {
+				LOG.info("On {} {}, received the response with an image and headers: \n{}", restRequest.getHttpMethod(),
+						restRequest.getPath(), returnedResponse.getHeaders().toString());
+			} else if (returnedResponse.getContentType().contains("application/json")
+					&& !returnedResponse.asString().isEmpty()) {
+				LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(),
+						restRequest.getPath(), Utility.prettyPrintJsonString(returnedResponse.asString()));
+			} else if (returnedResponse.getContentType().contains("application/xml")
+					&& !returnedResponse.asString().isEmpty()) {
+				String response = parseXML(returnedResponse);
+				LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(),
+						restRequest.getPath(), response);
+			} else {
+				LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(),
+						restRequest.getPath(), ToStringBuilder.reflectionToString(returnedResponse.asString(),
+								ToStringStyle.MULTI_LINE_STYLE));
+			}
+		}
+	}
+
+	private String parseXML(Response returnedResponse) {
+		DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+		String result = "";
+		try {
+			DocumentBuilder db = dbf.newDocumentBuilder();
+			InputSource is = new InputSource(new StringReader(returnedResponse.asString()));
+			Document document = db.parse(is);
+
 			OutputFormat format = new OutputFormat(document);
-            format.setLineWidth(65);
-            format.setIndenting(true);
-            format.setIndent(2);
-            Writer out = new StringWriter();
-            XMLSerializer serializer = new XMLSerializer(out, format);
-            serializer.serialize(document);
+			format.setLineWidth(65);
+			format.setIndenting(true);
+			format.setIndent(2);
+			Writer out = new StringWriter();
+			XMLSerializer serializer = new XMLSerializer(out, format);
+			serializer.serialize(document);
 
-            result = out.toString();
-        }
-        catch (Exception e)
-        {
-            result = "Error Parsing XML file returned: "+ e.getMessage();
-            setStatusCode(String.valueOf(HttpStatus.INTERNAL_SERVER_ERROR.value()));
-        }
+			result = out.toString();
+		} catch (Exception e) {
+			result = "Error Parsing XML file returned: " + e.getMessage();
+			setStatusCode(String.valueOf(HttpStatus.INTERNAL_SERVER_ERROR.value()));
+		}
 
-        return result;
-    }
+		return result;
+	}
 
-    /**
-     * Check if returned response contains an error (error node)
-     * 
-     * @param returnedResponse
-     * @throws EmptyJsonResponseException
-     */
-    private boolean checkForJsonError(Response returnedResponse) throws EmptyJsonResponseException
-    {
-        setLastError(null);
+	/**
+	 * Check if returned response contains an error (error node)
+	 * 
+	 * @param returnedResponse
+	 * @throws EmptyJsonResponseException
+	 */
+	private boolean checkForJsonError(Response returnedResponse) throws EmptyJsonResponseException {
+		setLastError(null);
 
-        try
-        {
-            // check for empty json response
-            returnedResponse.jsonPath().get();
-        }
-        catch (Exception e)
-        {
-            throw new EmptyJsonResponseException(e.getMessage());
-        }
-        Object error = returnedResponse.jsonPath().get("error");
-        if (error != null)
-        {
-            setLastError(returnedResponse.jsonPath().getObject("error", RestErrorModel.class));
-            return true;
-        }
+		try {
+			// check for empty json response
+			returnedResponse.jsonPath().get();
+		} catch (Exception e) {
+			throw new EmptyJsonResponseException(e.getMessage());
+		}
+		Object error = returnedResponse.jsonPath().get("error");
+		if (error != null) {
+			setLastError(returnedResponse.jsonPath().getObject("error", RestErrorModel.class));
+			return true;
+		}
 
-        return false;
-    }
+		return false;
+	}
 
-    /**
-     * Check if returned response contains an exception (status node)
-     * 
-     * @param returnedResponse
-     * @throws EmptyJsonResponseException
-     */
-    private boolean checkForJsonStatusException(Response returnedResponse) throws EmptyJsonResponseException
-    {
-        try
-        {
-            // check for empty json response
-            lastException = returnedResponse.jsonPath().get("exception");
-        }
-        catch (Exception e)
-        {
-            throw new EmptyJsonResponseException(e.getMessage());
-        }
-        if (lastException == null)
-            lastException = "";
+	/**
+	 * Check if returned response contains an exception (status node)
+	 * 
+	 * @param returnedResponse
+	 * @throws EmptyJsonResponseException
+	 */
+	private boolean checkForJsonStatusException(Response returnedResponse) throws EmptyJsonResponseException {
+		try {
+			// check for empty json response
+			lastException = returnedResponse.jsonPath().get("exception");
+		} catch (Exception e) {
+			throw new EmptyJsonResponseException(e.getMessage());
+		}
+		if (lastException == null)
+			lastException = "";
 
-        Object error = returnedResponse.jsonPath().get("status");
-        if (error != null)
-        {
-            setLastStatus(returnedResponse.jsonPath().getObject("status", StatusModel.class));
-            LOG.error("Exception thrown on response: {}", getLastStatus().toInfo());
-            return true;
-        }
+		Object error = returnedResponse.jsonPath().get("status");
+		if (error != null) {
+			setLastStatus(returnedResponse.jsonPath().getObject("status", StatusModel.class));
+			LOG.error("Exception thrown on response: {}", getLastStatus().toInfo());
+			return true;
+		}
 
-        return false;
-    }
+		return false;
+	}
 
-    /**
-     * Assert that a specific status code is returned
-     * 
-     * @param statusCode
-     * @return;
-     */
-    public RestWrapper assertStatusCodeIs(HttpStatus statusCode)
-    {
-        STEP(String.format("REST API: Assert that status code is %s", statusCode.toString()));
-        Assert.assertEquals(getStatusCode(), String.valueOf(statusCode.value()), "Status code is not as expected.");
+	/**
+	 * Assert that a specific status code is returned
+	 * 
+	 * @param statusCode @return;
+	 */
+	public RestWrapper assertStatusCodeIs(HttpStatus statusCode) {
+		STEP(String.format("REST API: Assert that status code is %s", statusCode.toString()));
+		Assert.assertEquals(getStatusCode(), String.valueOf(statusCode.value()), "Status code is not as expected.");
 
-        return this;
-    }
+		return this;
+	}
 
-    /**
-     * Backtrack algorithm to gather all declared fields within SuperClasses
-     * but stopping on TestModel.class
-     * 
-     * @param fields
-     * @param classz
-     * @return
-     */
-    private List<Field> getAllDeclaredFields(List<Field> fields, Class<?> classz)
-    {
-        if (classz.isAssignableFrom(TestModel.class))
-        {
-            return fields;
-        }
+	/**
+	 * Backtrack algorithm to gather all declared fields within SuperClasses but
+	 * stopping on TestModel.class
+	 * 
+	 * @param fields
+	 * @param classz
+	 * @return
+	 */
+	private List<Field> getAllDeclaredFields(List<Field> fields, Class<?> classz) {
+		if (classz.isAssignableFrom(TestModel.class)) {
+			return fields;
+		}
 
-        fields.addAll(Arrays.asList(classz.getDeclaredFields()));
+		fields.addAll(Arrays.asList(classz.getDeclaredFields()));
 
-        if (classz.getSuperclass() != null)
-        {
-            fields = getAllDeclaredFields(fields, classz.getSuperclass());
-        }
+		if (classz.getSuperclass() != null) {
+			fields = getAllDeclaredFields(fields, classz.getSuperclass());
+		}
 
-        return fields;
-    }
+		return fields;
+	}
 
-    /**
-     * Check that REST response has returned all required fields
-     * 
-     * @param classz
-     * @param classzInstance
-     * @throws IllegalAccessException
-     * @throws IllegalArgumentException
-     * @throws InvocationTargetException
-     * @throws InstantiationException
-     */
-    public <T> void validateJsonModelSchema(Class<T> classz, Object classzInstance)
-            throws IllegalAccessException, IllegalArgumentException, InvocationTargetException, InstantiationException
-    {
-        List<Field> allFields = getAllDeclaredFields(new LinkedList<Field>(), classz);
+	/**
+	 * Check that REST response has returned all required fields
+	 * 
+	 * @param classz
+	 * @param classzInstance
+	 * @throws IllegalAccessException
+	 * @throws IllegalArgumentException
+	 * @throws InvocationTargetException
+	 * @throws InstantiationException
+	 */
+	public <T> void validateJsonModelSchema(Class<T> classz, Object classzInstance)
+			throws IllegalAccessException, IllegalArgumentException, InvocationTargetException, InstantiationException {
+		List<Field> allFields = getAllDeclaredFields(new LinkedList<Field>(), classz);
 
-        for (Field field : allFields)
-        {
-            /*
-             * check for required fields
-             */
-            if (field.isAnnotationPresent(JsonProperty.class))
-            {
-                if (field.getAnnotation(JsonProperty.class).required())
-                {
-                    // we make it accessible to get the value
-                    field.setAccessible(true);
+		for (Field field : allFields) {
+			/*
+			 * check for required fields
+			 */
+			if (field.isAnnotationPresent(JsonProperty.class)) {
+				if (field.getAnnotation(JsonProperty.class).required()) {
+					// we make it accessible to get the value
+					field.setAccessible(true);
 
-                    // now obtaining the field value from instance
-                    Object fieldValue = field.get(classzInstance);
-                    String info = String.format("Checking required field [%s] from class %s - value: %s",
-                            field.getName(), classzInstance.getClass().getName(), fieldValue);
-                    LOG.info(info);
-                    Assert.assertNotNull(fieldValue, info);
+					// now obtaining the field value from instance
+					Object fieldValue = field.get(classzInstance);
+					String info = String.format("Checking required field [%s] from class %s - value: %s",
+							field.getName(), classzInstance.getClass().getName(), fieldValue);
+					LOG.info(info);
+					Assert.assertNotNull(fieldValue, info);
 
-                    // continue for non-primitive objects
-                    if (!field.getType().isPrimitive())
-                    {
-                        validateJsonModelSchema(fieldValue.getClass(), fieldValue);
-                    }
-                }
-            }
-        }
-    }
+					// continue for non-primitive objects
+					if (!field.getType().isPrimitive()) {
+						validateJsonModelSchema(fieldValue.getClass(), fieldValue);
+					}
+				}
+			}
+		}
+	}
 
-    /**
-     * @return parameters that you could pass on the request ?param=value
-     */
-    public String getParameters()
-    {
-        String localParam = parameters;
-        clearParameters();
-        return localParam;
-    }
+	/**
+	 * @return parameters that you could pass on the request ?param=value
+	 */
+	public String getParameters() {
+		String localParam = parameters;
+		clearParameters();
+		return localParam;
+	}
 
-    /**
-     * Define the entire string of parameters that will be send to request
-     * Don't forget to call {@link #getParameters()} in the request to enable this.
-     * 
-     * @param parameters
-     */
-    public void setParameters(String parameters)
-    {
-        this.parameters = parameters;
-    }
+	/**
+	 * Define the entire string of parameters that will be send to request Don't
+	 * forget to call {@link #getParameters()} in the request to enable this.
+	 * 
+	 * @param parameters
+	 */
+	public void setParameters(String parameters) {
+		this.parameters = parameters;
+	}
 
-    /**
-     * Just clear the parameters sent
-     */
-    public void clearParameters()
-    {
-        setParameters("");
-    }
+	/**
+	 * Just clear the parameters sent
+	 */
+	public void clearParameters() {
+		setParameters("");
+	}
 
-    /**
-     * just clear the base path
-     * 
-     * @return
-     */
-    public RestWrapper clearBasePath()
-    {
-        this.configureRequestSpec().setBasePath("");
-        return this;
-    }
+	/**
+	 * just clear the base path
+	 * 
+	 * @return
+	 */
+	public RestWrapper clearBasePath() {
+		this.configureRequestSpec().setBasePath("");
+		return this;
+	}
 
-    /**
-     * Send key=value parameters
-     * All of them will be automatically passed to url.
-     * Example: "maxItems=10000"
-     * 
-     * @param parameters
-     * @return
-     */
-    public RestWrapper withParams(String... parameters)
-    {
-        StringBuilder paramsUrl = new StringBuilder();
-        String delimiter = (parameters.length > 1 ? "&" : "");
+	/**
+	 * Send key=value parameters All of them will be automatically passed to url.
+	 * Example: "maxItems=10000"
+	 * 
+	 * @param parameters
+	 * @return
+	 */
+	public RestWrapper withParams(String... parameters) {
+		StringBuilder paramsUrl = new StringBuilder();
+		String delimiter = (parameters.length > 1 ? "&" : "");
 
-        for (int i = 0; i < parameters.length; i++)
-        {
-            paramsUrl.append(parameters[i]);
-            if (i < parameters.length - 1)
-                paramsUrl.append(delimiter);
-        }
+		for (int i = 0; i < parameters.length; i++) {
+			paramsUrl.append(parameters[i]);
+			if (i < parameters.length - 1)
+				paramsUrl.append(delimiter);
+		}
 
-        setParameters(paramsUrl.toString());
-        return this;
-    }
+		setParameters(paramsUrl.toString());
+		return this;
+	}
 
-    /**
-     * @return {@link RestCoreAPI} using the rest Core API as prefix: {@link /alfresco/api/-default-/public/alfresco/versions/1}
-     */
-    public RestCoreAPI withCoreAPI()
-    {
-        return new RestCoreAPI(this);
-    }
+	/**
+	 * @return {@link RestCoreAPI} using the rest Core API as prefix:
+	 *         {@link /alfresco/api/-default-/public/alfresco/versions/1}
+	 */
+	public RestCoreAPI withCoreAPI() {
+		return new RestCoreAPI(this);
+	}
 
-    /**
-     * @return {@link RestWorkflowAPI} using the rest Workflow API with prefix: {@link /alfresco/api/-default-/public/workflow/versions/1 }
-     */
-    public RestWorkflowAPI withWorkflowAPI()
-    {
-        return new RestWorkflowAPI(this);
-    }
+	/**
+	 * @return {@link RestWorkflowAPI} using the rest Workflow API with prefix:
+	 *         {@link /alfresco/api/-default-/public/workflow/versions/1 }
+	 */
+	public RestWorkflowAPI withWorkflowAPI() {
+		return new RestWorkflowAPI(this);
+	}
 
-    /**
-     * @return {@link RestAuthAPI} using the rest Auth API with prefix: {@link /alfresco/api/-default-/public/authentication/versions/1 }
-     */
-    public RestAuthAPI withAuthAPI()
-    {
-        return new RestAuthAPI(this);
-    }
+	/**
+	 * @return {@link RestAuthAPI} using the rest Auth API with prefix:
+	 *         {@link /alfresco/api/-default-/public/authentication/versions/1 }
+	 */
+	public RestAuthAPI withAuthAPI() {
+		return new RestAuthAPI(this);
+	}
 
-    public SearchAPI withSearchAPI()
-    {
-        return new SearchAPI(this);
-    }
+	public SearchAPI withSearchAPI() {
+		return new SearchAPI(this);
+	}
 
-    public SearchSQLAPI withSearchSqlAPI()
-    {
-        return new SearchSQLAPI(this);
-    }
+	public SearchSQLAPI withSearchSqlAPI() {
+		return new SearchSQLAPI(this);
+	}
 
-    public SearchSQLJDBC withSearchSqlViaJDBC()
-    {
-        return new SearchSQLJDBC(this);
-    }
+	public SearchSQLJDBC withSearchSqlViaJDBC() {
+		return new SearchSQLJDBC(this);
+	}
 
-    public ShardInfoAPI withShardInfoAPI()
-    {
-        return new ShardInfoAPI(this);
-    }
+	public ShardInfoAPI withShardInfoAPI() {
+		return new ShardInfoAPI(this);
+	}
 
-    public SolrAPI withSolrAPI()
-    {
-        return new SolrAPI(this);
-    }
-    
-    public SolrAdminAPI withSolrAdminAPI()
-    {
-        return new SolrAdminAPI(this);
-    }
+	public SolrAPI withSolrAPI() {
+		return new SolrAPI(this);
+	}
 
-    /**
-     * @return {@link RestDiscoveryAPI} using the rest Discovery API as prefix: {@link /alfresco/api/discovery}
-     */
-    public RestDiscoveryAPI withDiscoveryAPI()
-    {
-        return new RestDiscoveryAPI(this);
-    }
+	public SolrAdminAPI withSolrAdminAPI() {
+		return new SolrAdminAPI(this);
+	}
 
-    /**
-     * @return {@link AdminConsole} using the Admin Console API as prefix: {@link /alfresco/service/api/server}
-     */
-    public AdminConsole withAdminConsole()
-    {
-        return new AdminConsole(this);
-    }
+	/**
+	 * @return {@link RestDiscoveryAPI} using the rest Discovery API as prefix:
+	 *         {@link /alfresco/api/discovery}
+	 */
+	public RestDiscoveryAPI withDiscoveryAPI() {
+		return new RestDiscoveryAPI(this);
+	}
 
-    /**
-     * Provides DSL on creating Tenant users
-     * 
-     * @return {@link Tenant}
-     */
-    public Tenant usingTenant()
-    {
-        return new Tenant(this, restProperties);
-    }
+	/**
+	 * @return {@link AdminConsole} using the Admin Console API as prefix:
+	 *         {@link /alfresco/service/api/server}
+	 */
+	public AdminConsole withAdminConsole() {
+		return new AdminConsole(this);
+	}
 
-    /**
-     * Construct the Where clause of any REST API call
-     * You can use the where parameter to restrict the list in the response to entries of a specific kind.
-     * The where parameter takes a value.
-     */
-    public RestWrapper where(String whereExpression)
-    {
-        String whereClause = "where=(%s)";
+	/**
+	 * Provides DSL on creating Tenant users
+	 * 
+	 * @return {@link Tenant}
+	 */
+	public Tenant usingTenant() {
+		return new Tenant(this, restProperties);
+	}
 
-        return withParams(String.format(whereClause, whereExpression));
-    }
+	/**
+	 * Construct the Where clause of any REST API call You can use the where
+	 * parameter to restrict the list in the response to entries of a specific kind.
+	 * The where parameter takes a value.
+	 */
+	public RestWrapper where(String whereExpression) {
+		String whereClause = "where=(%s)";
 
-    public ContentType getDefaultContentType()
-    {
-        return defaultContentType;
-    }
+		return withParams(String.format(whereClause, whereExpression));
+	}
 
-    public RestWrapper usingContentType(ContentType defaultContentType)
-    {
-        this.defaultContentType = defaultContentType;
-        return this;
-    }
+	public ContentType getDefaultContentType() {
+		return defaultContentType;
+	}
 
-    /**
-     * You can handle the request sent to server by calling this method.
-     * If for example you want to sent multipart form data you can use: <code>
-     * restClient.configureRequestSpec() 
-                    .addMultiPart("filedata", Utility.getResourceTestDataFile("restapi-resource"))
-                    .addFormParam("renditions", "doclib")
-                    .addFormParam("autoRename", true);
-                    
-       restClient.withCoreAPI().usingNode(ContentModel.my()).createNode();             
-     * </code> This will create the node using the multipart data defined.
-     * 
-     * @return
-     */
-    public RequestSpecBuilder configureRequestSpec()
-    {
-        return this.requestSpecBuilder;
-    }
+	public RestWrapper usingContentType(ContentType defaultContentType) {
+		this.defaultContentType = defaultContentType;
+		return this;
+	}
 
-    /**
-     * Perform CMIS browser binding calls ("alfresco/api/-default-/public/cmis/versions/1.1/browser") with Rest API
-     * 
-     * @return {@link RestCmisAPI}
-     */
-    public RestCmisAPI withCMISApi()
-    {
-        return new RestCmisAPI(this);
-    }
+	/**
+	 * You can handle the request sent to server by calling this method. If for
+	 * example you want to sent multipart form data you can use: <code>
+	 * restClient.configureRequestSpec() 
+	                .addMultiPart("filedata", Utility.getResourceTestDataFile("restapi-resource"))
+	                .addFormParam("renditions", "doclib")
+	                .addFormParam("autoRename", true);
+	                
+	   restClient.withCoreAPI().usingNode(ContentModel.my()).createNode();             
+	 * </code> This will create the node using the multipart data defined.
+	 * 
+	 * @return
+	 */
+	public RequestSpecBuilder configureRequestSpec() {
+		return this.requestSpecBuilder;
+	}
 
-    /**
-     * Perform AOS browser binding calls ("alfresco/aos") with Rest API
-     * 
-     * @return {@link RestAosAPI}
-     */
-    public RestAosAPI withAosAPI()
-    {
-        return new RestAosAPI(this);
-    }
+	/**
+	 * Perform CMIS browser binding calls
+	 * ("alfresco/api/-default-/public/cmis/versions/1.1/browser") with Rest API
+	 * 
+	 * @return {@link RestCmisAPI}
+	 */
+	public RestCmisAPI withCMISApi() {
+		return new RestCmisAPI(this);
+	}
 
-    /**
-     * @return {@link RestPrivateAPI} using the rest Private API as prefix: {@link /alfresco/api/-default-/private/alfresco/versions/1}
-     */
-    public RestPrivateAPI withPrivateAPI()
-    {
-        return new RestPrivateAPI(this);
-    }
+	/**
+	 * Perform AOS browser binding calls ("alfresco/aos") with Rest API
+	 * 
+	 * @return {@link RestAosAPI}
+	 */
+	public RestAosAPI withAosAPI() {
+		return new RestAosAPI(this);
+	}
 
-    public RestResponse onResponse()
-    {
-        if (response == null)
-            throw new UnsupportedOperationException("Cannot perform on a Response that wasn't yet received!");
-        return response;
-    }
+	/**
+	 * @return {@link RestPrivateAPI} using the rest Private API as prefix:
+	 *         {@link /alfresco/api/-default-/private/alfresco/versions/1}
+	 */
+	public RestPrivateAPI withPrivateAPI() {
+		return new RestPrivateAPI(this);
+	}
 
-    /**
-     * Process responses for a single model as {@link RestSyncSetRequestModel}
-     * Notice that {@link RestSyncSetRequestModel} doesn't have one "entry" field as any other rest request model
-     *
-     * @throws JsonToModelConversionException If the response cannot be converted to the given model.
-     * @throws EmptyJsonResponseException If there is no response from the server.
-     */
-    public <T> T processModelWithoutEntryObject(Class<T> classz, RestRequest restRequest)
-            throws EmptyJsonResponseException, JsonToModelConversionException
-    {
-        Response returnedResponse = sendRequest(restRequest);
+	public RestResponse onResponse() {
+		if (response == null)
+			throw new UnsupportedOperationException("Cannot perform on a Response that wasn't yet received!");
+		return response;
+	}
 
-        setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
+	/**
+	 * Process responses for a single model as {@link RestSyncSetRequestModel}
+	 * Notice that {@link RestSyncSetRequestModel} doesn't have one "entry" field as
+	 * any other rest request model
+	 *
+	 * @throws JsonToModelConversionException If the response cannot be converted to
+	 *                                        the given model.
+	 * @throws EmptyJsonResponseException     If there is no response from the
+	 *                                        server.
+	 */
+	public <T> T processModelWithoutEntryObject(Class<T> classz, RestRequest restRequest)
+			throws EmptyJsonResponseException, JsonToModelConversionException {
+		Response returnedResponse = sendRequest(restRequest);
 
-        boolean responseHasErrors = checkForJsonError(returnedResponse);
-        // Do not check checkForJsonStatusException as status object in the API response is not a standard statusModel
-        // boolean responseHasExceptions = checkForJsonStatusException(returnedResponse);
+		setStatusCode(String.valueOf(returnedResponse.getStatusCode()));
 
-        T model = null;
+		boolean responseHasErrors = checkForJsonError(returnedResponse);
+		// Do not check checkForJsonStatusException as status object in the API response
+		// is not a standard statusModel
+		// boolean responseHasExceptions =
+		// checkForJsonStatusException(returnedResponse);
 
-        try
-        {
-            if (!responseHasErrors)
-            {
-                model = returnedResponse.jsonPath().getObject("$", classz);
-                validateJsonModelSchema(classz, model);
-            }
-        }
-        catch (Exception processError)
-        {
-            throw new JsonToModelConversionException(classz, processError);
-        }
-        if (model == null)
-        {
-            try
-            {
-                return classz.newInstance();
-            }
-            catch (Exception e)
-            {
-                e.printStackTrace();
-            }
-        }
+		T model = null;
 
-        return model;
-    }
+		try {
+			if (!responseHasErrors) {
+				model = returnedResponse.jsonPath().getObject("$", classz);
+				validateJsonModelSchema(classz, model);
+			}
+		} catch (Exception processError) {
+			throw new JsonToModelConversionException(classz, processError);
+		}
+		if (model == null) {
+			try {
+				return classz.newInstance();
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
 
-    public void configureSyncServiceEndPoint()
-    {
-        this.serverURI = restProperties.envProperty().getSyncServerUrl();
-        this.serverPort = restProperties.envProperty().getSyncPort();
-        configureServerEndpoint();
-    }
+		return model;
+	}
 
-    public void configureSolrEndPoint()
-    {
-        this.serverURI = restProperties.envProperty().getSolrServerUrl();
-        this.serverPort = restProperties.envProperty().getSolrPort();
-        configureServerEndpoint();
-    }
+	public void configureSyncServiceEndPoint() {
+		this.serverURI = restProperties.envProperty().getSyncServerUrl();
+		this.serverPort = restProperties.envProperty().getSyncPort();
+		configureServerEndpoint();
+	}
 
-    /**
-     * Use {@link #setServerURI(String)} and {@link #setServerPort(int)}
-     */
-    public void configureServerEndpoint()
-    {
-        requestSpecBuilder = new RequestSpecBuilder();
+	public void configureSolrEndPoint() {
+		this.serverURI = restProperties.envProperty().getSolrServerUrl();
+		this.serverPort = restProperties.envProperty().getSolrPort();
+		configureServerEndpoint();
+	}
 
-        // use static variables for logs, etc
-        // the request spec is built from data set via setters, see RestWrapper#onRequest
-        RestAssured.baseURI = this.serverURI;
-        RestAssured.port = this.serverPort;
+	public void configureSearchEndPoint() {
+		this.serverURI = restProperties.envProperty().getServer();
+		this.serverPort = restProperties.envProperty().getPort();
+		configureServerEndpoint();
+	}
+	/**
+	 * Use {@link #setServerURI(String)} and {@link #setServerPort(int)}
+	 */
+	public void configureServerEndpoint() {
+		requestSpecBuilder = new RequestSpecBuilder();
 
-        configureRequestSpec().setBaseUri(this.serverURI);
-        configureRequestSpec().setPort(this.serverPort);
-    }
+		// use static variables for logs, etc
+		// the request spec is built from data set via setters, see
+		// RestWrapper#onRequest
+		RestAssured.baseURI = this.serverURI;
+		RestAssured.port = this.serverPort;
+
+		configureRequestSpec().setBaseUri(this.serverURI);
+		configureRequestSpec().setPort(this.serverPort);
+	}
 }
