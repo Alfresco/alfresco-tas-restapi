@@ -73,7 +73,7 @@ public class Site extends ModelRequest<Site>
   
   /**
    * Retrieve sites using GET call on "sites/{siteId}" along with relations parameter
-   * /sites/{siteId}/group-members
+   * 
    * @return
    * @throws JsonToModelConversionException
    */
