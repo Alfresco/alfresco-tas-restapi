@@ -161,7 +161,7 @@ public class JsonBodyGenerator
     
     public static String siteGroup(String authorityId, UserRole role)
     {
-        Utility.checkObjectIsInitialized(authorityId, "userModel.getUserRole()");
+        Utility.checkObjectIsInitialized(authorityId, "authorityId");
         JsonObject value = defineJSON()
                 .add("role", role.name())
                 .add("id", authorityId).build();
