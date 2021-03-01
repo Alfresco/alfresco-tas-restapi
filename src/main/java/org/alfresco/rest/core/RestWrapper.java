@@ -926,19 +926,16 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
     }
 
     /**
-     * @return {@link RestModelAPI} using the rest model API with prefix: {@link /alfresco/api/-default-/public/workflow/versions/1 }
-     */
-    public RestModelAPI withModelAPI()
-    {
-        return new RestModelAPI(this);
-    }
-
-    /**
      * @return {@link RestAuthAPI} using the rest Auth API with prefix: {@link /alfresco/api/-default-/public/authentication/versions/1 }
      */
     public RestAuthAPI withAuthAPI()
     {
         return new RestAuthAPI(this);
+    }
+
+    public RestModelAPI withModelAPI()
+    {
+        return new RestModelAPI(this);
     }
 
     public SearchAPI withSearchAPI()
