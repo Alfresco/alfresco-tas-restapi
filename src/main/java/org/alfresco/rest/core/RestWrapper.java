@@ -36,6 +36,7 @@ import org.alfresco.rest.requests.authAPI.RestAuthAPI;
 import org.alfresco.rest.requests.cmisAPI.RestCmisAPI;
 import org.alfresco.rest.requests.coreAPI.RestCoreAPI;
 import org.alfresco.rest.requests.discoveryAPI.RestDiscoveryAPI;
+import org.alfresco.rest.requests.modelAPI.RestModelAPI;
 import org.alfresco.rest.requests.privateAPI.RestPrivateAPI;
 import org.alfresco.rest.requests.search.SearchAPI;
 import org.alfresco.rest.requests.search.SearchSQLAPI;
@@ -922,6 +923,14 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
     public RestWorkflowAPI withWorkflowAPI()
     {
         return new RestWorkflowAPI(this);
+    }
+
+    /**
+     * @return {@link RestModelAPI} using the rest model API with prefix: {@link /alfresco/api/-default-/public/workflow/versions/1 }
+     */
+    public RestModelAPI withModelAPI()
+    {
+        return new RestModelAPI(this);
     }
 
     /**
