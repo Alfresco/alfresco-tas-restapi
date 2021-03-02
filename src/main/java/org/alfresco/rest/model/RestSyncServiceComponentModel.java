@@ -49,6 +49,9 @@ public class RestSyncServiceComponentModel extends TestModel
         return message;
     }
 
-    public int getDuration() { return duration; }
+    public int getDuration()
+    {
+        return duration;
+    }
 
 }
