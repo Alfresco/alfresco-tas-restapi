@@ -1,0 +1,34 @@
+version: 2
+registries:
+  maven-repository-artifacts-alfresco-com-nexus-content-groups-int:
+    type: maven-repository
+    url: https://artifacts.alfresco.com/nexus/content/groups/internal
+    username: bamboo
+    password: "${{secrets.MAVEN_REPOSITORY_ARTIFACTS_ALFRESCO_COM_NEXUS_CONTENT_GROUPS_INT_PASSWORD}}"
+
+updates:
+- package-ecosystem: maven
+  directory: "/"
+  schedule:
+    interval: daily
+    time: "22:00"
+    timezone: Africa/Abidjan
+  open-pull-requests-limit: 99
+  ignore:
+  - dependency-name: org.apache.httpcomponents:httpclient-osgi
+    versions:
+    - "> 4.5.10"
+  - dependency-name: com.github.scribejava:scribejava-apis
+    versions:
+    - 8.1.0
+    - 8.2.0
+  - dependency-name: org.alfresco.tas:utility
+    versions:
+    - 3.0.41
+    - 3.0.42
+    - 3.0.43
+  - dependency-name: org.codehaus.groovy:groovy-json
+    versions:
+    - 3.0.7
+  registries:
+  - maven-repository-artifacts-alfresco-com-nexus-content-groups-int
