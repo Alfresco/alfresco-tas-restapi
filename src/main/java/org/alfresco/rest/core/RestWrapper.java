@@ -10,7 +10,10 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
 
 import javax.annotation.PostConstruct;
 import javax.xml.parsers.DocumentBuilder;
@@ -639,33 +642,26 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
     private void logResponseInformation(RestRequest restRequest, Response returnedResponse)
     {
         String responseSizeString = returnedResponse.getHeader("Content-Length");
-        if (responseSizeString != null && Integer.valueOf(responseSizeString) > IGNORE_CONTENT_LIMIT_BYTES)
+        if (responseSizeString != null)
         {
-            LOG.info("On {} {}, received a response size that was {} bytes.\n"
-                    + "This is bigger than the limit of {} bytes so its content will not be displayed: \n", restRequest.getHttpMethod(),
-                restRequest.getPath(), Integer.valueOf(responseSizeString), IGNORE_CONTENT_LIMIT_BYTES);
-        }
-        else
-        {
-            if (returnedResponse.getContentType().contains("image/png"))
-            {
-                LOG.info("On {} {}, received the response with an image and headers: \n{}", restRequest.getHttpMethod(), restRequest.getPath(),
-                    returnedResponse.getHeaders().toString());
-            }
-            else if (returnedResponse.getContentType().contains("application/json") && responseSizeString != null && !returnedResponse.asString().isEmpty())
-            {
-                LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(), restRequest.getPath(),
-                    Utility.prettyPrintJsonString(returnedResponse.asString()));
-            }
-            else if (returnedResponse.getContentType().contains("application/xml") && !returnedResponse.asString().isEmpty())
-            {
-                String response = parseXML(returnedResponse);
-                LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(), restRequest.getPath(), response);
-            }
-            else
-            {
-                LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(), restRequest.getPath(),
-                    ToStringBuilder.reflectionToString(returnedResponse.asString(), ToStringStyle.MULTI_LINE_STYLE));
+            if (Integer.valueOf(responseSizeString) > IGNORE_CONTENT_LIMIT_BYTES) {
+                LOG.info("On {} {}, received a response size that was {} bytes.\n"
+                                + "This is bigger than the limit of {} bytes so its content will not be displayed: \n", restRequest.getHttpMethod(),
+                        restRequest.getPath(), Integer.valueOf(responseSizeString), IGNORE_CONTENT_LIMIT_BYTES);
+            } else {
+                if (returnedResponse.getContentType().contains("image/png")) {
+                    LOG.info("On {} {}, received the response with an image and headers: \n{}", restRequest.getHttpMethod(), restRequest.getPath(),
+                            returnedResponse.getHeaders().toString());
+                } else if (returnedResponse.getContentType().contains("application/json") && !returnedResponse.asString().isEmpty()) {
+                    LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(), restRequest.getPath(),
+                            Utility.prettyPrintJsonString(returnedResponse.asString()));
+                } else if (returnedResponse.getContentType().contains("application/xml") && !returnedResponse.asString().isEmpty()) {
+                    String response = parseXML(returnedResponse);
+                    LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(), restRequest.getPath(), response);
+                } else {
+                    LOG.info("On {} {}, received the following response \n{}", restRequest.getHttpMethod(), restRequest.getPath(),
+                            ToStringBuilder.reflectionToString(returnedResponse.asString(), ToStringStyle.MULTI_LINE_STYLE));
+                }
             }
         }
     }
@@ -720,9 +716,12 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
         }
         Object error = returnedResponse.jsonPath().get("error");
 
-        if(error == null || (error instanceof List && ((List<?>) error).size() == 0)) {
+        if(error == null || (error instanceof List && ((List<?>) error).size() == 0))
+        {
             return false;
-        }else{
+        }
+        else
+        {
             setLastError(returnedResponse.jsonPath().getObject("error", RestErrorModel.class));
             return true;
         }
