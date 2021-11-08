@@ -10,10 +10,7 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 import javax.annotation.PostConstruct;
 import javax.xml.parsers.DocumentBuilder;
@@ -255,7 +252,7 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
 
         T models = null;
 
-        if (!responseHasExceptions && !responseHasErrors)
+        if (!responseHasExceptions && !responseHasErrors && returnedResponse.getHeader("Content-Length") != null)
         {
             try
             {
@@ -264,8 +261,8 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
             }
             catch (Exception processError)
             {
-            	processError.printStackTrace();
-            	throw new JsonToModelConversionException(classz, processError);
+                processError.printStackTrace();
+                throw new JsonToModelConversionException(classz, processError);
             }
         }
 
@@ -722,13 +719,13 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
             throw new EmptyJsonResponseException(e.getMessage());
         }
         Object error = returnedResponse.jsonPath().get("error");
-        if (error != null)
-        {
+
+        if(error == null || (error instanceof List && ((List<?>) error).size() == 0)) {
+            return false;
+        }else{
             setLastError(returnedResponse.jsonPath().getObject("error", RestErrorModel.class));
             return true;
         }
-
-        return false;
     }
 
     /**
@@ -752,14 +749,14 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
             lastException = "";
 
         Object error = returnedResponse.jsonPath().get("status");
-        if (error != null)
-        {
+
+        if(error == null || (error instanceof List && ((List<?>) error).size() == 0)) {
+            return false;
+        }else{
             setLastStatus(returnedResponse.jsonPath().getObject("status", StatusModel.class));
             LOG.error("Exception thrown on response: {}", getLastStatus().toInfo());
             return true;
         }
-
-        return false;
     }
 
     /**
