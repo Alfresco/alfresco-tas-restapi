@@ -264,8 +264,8 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
             }
             catch (Exception processError)
             {
-                processError.printStackTrace();
-                throw new JsonToModelConversionException(classz, processError);
+            	processError.printStackTrace();
+            	throw new JsonToModelConversionException(classz, processError);
             }
         }
 
