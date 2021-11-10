@@ -1161,7 +1161,7 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
 
     /**
      * This method is being used to check response with empty path.
-     * The object matching the Object graph. This may be any primitive type, a List or a Map.
+     * It expects a list or a map in @param response and checks empty path for the same.
      */
     public boolean isResponseWithEmptyPath(Response response) {
         return (response.jsonPath().get() instanceof List && ((List<?>)response.jsonPath().get()).isEmpty()) ||
