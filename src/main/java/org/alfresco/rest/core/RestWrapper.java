@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 import javax.annotation.PostConstruct;
 import javax.xml.parsers.DocumentBuilder;
@@ -255,7 +256,7 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
 
         T models = null;
 
-        if (!responseHasExceptions && !responseHasErrors && !isResponseWithEmptyArray(returnedResponse))
+        if (!responseHasExceptions && !responseHasErrors && !isResponseWithEmptyPath(returnedResponse))
         {
             try
             {
@@ -722,7 +723,7 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
             throw new EmptyJsonResponseException(e.getMessage());
         }
         Object error = returnedResponse.jsonPath().get("error");
-        if (error != null && !isResponseWithEmptyArray(returnedResponse))
+        if (error != null && !isResponseWithEmptyPath(returnedResponse))
         {
             setLastError(returnedResponse.jsonPath().getObject("error", RestErrorModel.class));
             return true;
@@ -752,7 +753,7 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
             lastException = "";
 
         Object error = returnedResponse.jsonPath().get("status");
-        if (error != null && !isResponseWithEmptyArray(returnedResponse))
+        if (error != null && !isResponseWithEmptyPath(returnedResponse))
         {
             setLastStatus(returnedResponse.jsonPath().getObject("status", StatusModel.class));
             LOG.error("Exception thrown on response: {}", getLastStatus().toInfo());
@@ -1158,7 +1159,11 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
         configureServerEndpoint();
     }
 
-    public boolean isResponseWithEmptyArray(Response response) {
+    /**
+     * This method is being used to check response with empty path.
+     * The object matching the Object graph. This may be any primitive type, a List or a Map.
+     */
+    public boolean isResponseWithEmptyPath(Response response) {
         return (response.jsonPath().get() instanceof List && ((List<?>)response.jsonPath().get()).isEmpty()) ||
                 (response.jsonPath().get() instanceof Map && ((Map<?,?>)response.jsonPath().get()).isEmpty());
     }
