@@ -499,7 +499,7 @@ public class Node extends ModelRequest<Node>
                 renditionId);
         RestResponse response = restWrapper.process(request);
         int retry = 0;
-        while (Integer.valueOf(response.getStatusCode()).equals(HttpStatus.NOT_FOUND.value()) && retry < Utility.retryCountSeconds)
+        while (Integer.valueOf(response.getStatusCode()).equals(HttpStatus.NOT_FOUND.value()) && retry < (4 * Utility.retryCountSeconds))
         {
             Utility.waitToLoopTime(1);
             response = restWrapper.process(request);
