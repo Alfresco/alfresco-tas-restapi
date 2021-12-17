@@ -35,21 +35,12 @@ public class ContentStorageInformation extends ModelRequest<ContentStorageInform
         return this;
     }
 
-    private void verifyNodeIdAndPropName()
-    {
-        if (nodeId == null || contentPropName == null) 
-        {   
-            throw new IllegalArgumentException("nodeId and contentPropName must be initialised.");
-        }
-    }
-
     /**
      * Get Content Storage Properties using GET call on "nodes/{nodeId}/storage-info/{contentPropName}"
      * @return
      */
     public RestContentStorageInfoModel getStorageInfo()
     {
-        verifyNodeIdAndPropName();
         return getStorageInfo(nodeId, contentPropName);
     }
 
@@ -73,7 +64,6 @@ public class ContentStorageInformation extends ModelRequest<ContentStorageInform
      */
     public RestResponse requestArchiveContent(RestArchiveContentRequestModel archiveContentRequest)
     {
-        verifyNodeIdAndPropName();
         return requestArchiveContent(nodeId, contentPropName, archiveContentRequest);
     }
 
@@ -99,7 +89,6 @@ public class ContentStorageInformation extends ModelRequest<ContentStorageInform
      */
     public RestResponse requestRestoreContentFromArchive(RestRestoreArchivedContentRequestModel restoreArchivedContentRequest)
     {
-        verifyNodeIdAndPropName();
         return requestRestoreContentFromArchive(nodeId, contentPropName, restoreArchivedContentRequest);
     }
 
