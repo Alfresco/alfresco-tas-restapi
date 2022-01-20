@@ -60,7 +60,7 @@ public class ContentStorageInformation extends ModelRequest<ContentStorageInform
     }
 
     /**
-     * Get Content Storage Properties using GET call on "nodes/{nodeId}/storage-info/{contentPropName}"
+     * Get Content Version Storage Properties using GET call on "nodes/{nodeId}/versions/{versionId}/storage-info/{contentPropName}"
      * @return
      */
     public RestContentStorageInfoModel getVersionStorageInfo()
@@ -85,7 +85,7 @@ public class ContentStorageInformation extends ModelRequest<ContentStorageInform
      * @param nodeId The nodeId
      * @param versionId The versionId
      * @param contentPropName The content property QNAME ie. "cm:content"
-     * @return
+     * @return object of {@link RestContentStorageInfoModel}
      */
     public RestContentStorageInfoModel getVersionStorageInfo(String nodeId, String versionId, String contentPropName)
     {
