@@ -4,7 +4,7 @@
     <groupId>org.alfresco.tas</groupId>
     <artifactId>restapi</artifactId>
     <name>alfresco-tas-restapi</name>
-    <version>1.60-SNAPSHOT</version>
+    <version>1.74-SNAPSHOT</version>
     <parent>
         <groupId>org.alfresco</groupId>
         <artifactId>alfresco-super-pom</artifactId>
@@ -28,13 +28,13 @@
         <suiteXmlFile>src/main/resources/shared-resources/testCount.xml</suiteXmlFile>
         <maven.build.sourceVersion>11</maven.build.sourceVersion>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <tas.utility.version>3.0.21</tas.utility.version>
+        <tas.utility.version>3.0.48</tas.utility.version>
         <rest-assured.version>3.3.0</rest-assured.version>
         <httpclient-osgi-version>4.5.3</httpclient-osgi-version>
         <json-path.version>3.3.0</json-path.version>
         <xml-path.version>3.3.0</xml-path.version>
         <json-schema-validator.version>4.4.0</json-schema-validator.version>
-        <jackson-databind.version>2.9.8</jackson-databind.version>
+        <jackson-databind.version>2.9.10.8</jackson-databind.version>
         <maven-release.version>2.5.3</maven-release.version>
         <org.glassfish.version>1.1.4</org.glassfish.version>
         <commons-lang3.version>3.12.0</commons-lang3.version>
@@ -43,6 +43,24 @@
         <test.include />
         <java.version>11</java.version>
     </properties>
+
+    <profiles>
+        <profile>
+            <id>rest-api-explorer-master</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <rest.api.explorer.branch>master</rest.api.explorer.branch>
+            </properties>
+        </profile>
+        <profile>
+            <id>rest-api-explorer-52N</id>
+            <properties>
+                <rest.api.explorer.branch>5.2.N</rest.api.explorer.branch>
+            </properties>
+        </profile>
+    </profiles>
 
     <scm>
         <connection>scm:git:https://github.com/Alfresco/alfresco-tas-restapi.git</connection>
@@ -120,11 +138,11 @@
                 </executions>
                 <configuration>
                     <arguments>
-                        <argument>https://raw.githubusercontent.com/Alfresco/rest-api-explorer/5.2.N/src/main/webapp/definitions/alfresco-auth.yaml</argument>
-                        <argument>https://raw.githubusercontent.com/Alfresco/rest-api-explorer/5.2.N/src/main/webapp/definitions/alfresco-core.yaml</argument>
-                        <argument>https://raw.githubusercontent.com/Alfresco/rest-api-explorer/5.2.N/src/main/webapp/definitions/alfresco-discovery.yaml</argument>
-                        <argument>https://raw.githubusercontent.com/Alfresco/rest-api-explorer/5.2.N/src/main/webapp/definitions/alfresco-search.yaml</argument>
-                        <argument>https://raw.githubusercontent.com/Alfresco/rest-api-explorer/5.2.N/src/main/webapp/definitions/alfresco-workflow.yaml</argument>
+                        <argument>https://raw.githubusercontent.com/Alfresco/rest-api-explorer/${rest.api.explorer.branch}/src/main/webapp/definitions/alfresco-auth.yaml</argument>
+                        <argument>https://raw.githubusercontent.com/Alfresco/rest-api-explorer/${rest.api.explorer.branch}/src/main/webapp/definitions/alfresco-core.yaml</argument>
+                        <argument>https://raw.githubusercontent.com/Alfresco/rest-api-explorer/${rest.api.explorer.branch}/src/main/webapp/definitions/alfresco-discovery.yaml</argument>
+                        <argument>https://raw.githubusercontent.com/Alfresco/rest-api-explorer/${rest.api.explorer.branch}/src/main/webapp/definitions/alfresco-search.yaml</argument>
+                        <argument>https://raw.githubusercontent.com/Alfresco/rest-api-explorer/${rest.api.explorer.branch}/src/main/webapp/definitions/alfresco-workflow.yaml</argument>
                     </arguments>
                     <mainClass>org.alfresco.rest.core.swagger.Generator</mainClass>
                 </configuration>
@@ -255,14 +273,14 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>1.7.30</version>
+            <version>1.7.32</version>
         </dependency>
         
 		<!-- swagger parser -->
 		<dependency>
 			<groupId>io.swagger</groupId>
 			<artifactId>swagger-parser</artifactId>
-			<version>1.0.23</version>
+			<version>1.0.31</version>
 			<exclusions>
 				<exclusion>
 					<artifactId>commons-lang3</artifactId>
@@ -274,7 +292,7 @@
         <dependency>
             <groupId>xerces</groupId>
             <artifactId>xercesImpl</artifactId>
-            <version>2.12.1</version>
+            <version>2.12.2</version>
         </dependency>
         
 		<!--fixing java.lang.ClassCastException: class [B cannot be cast to class [C ([B and [C are in module java.base of loader 'bootstrap')  -->              
@@ -282,7 +300,7 @@
 		<dependency>
 		    <groupId>org.codehaus.groovy</groupId>
 		    <artifactId>groovy</artifactId>
-		    <version>2.5.9</version>
+		    <version>2.5.14</version>
 		</dependency>
 		
 		<!-- https://mvnrepository.com/artifact/org.codehaus.groovy/groovy-json-->
