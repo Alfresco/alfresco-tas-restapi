@@ -922,8 +922,6 @@ public class Node extends ModelRequest<Node>
      */
     public RestResponse createDirectAccessURLforRendition(String postBody, String renditionId)
     {
-//        RestRequest request = RestRequest
-//                .simpleRequest(HttpMethod.POST, "nodes/{nodeId}/renditions/{renditionId}/request-direct-access-url", this.repoModel.getNodeRef(), renditionId);
         RestRequest request;
         if (postBody == null)
         {
@@ -943,8 +941,6 @@ public class Node extends ModelRequest<Node>
      */
     public RestResponse createDirectAccessURLforVersion(String postBody, String versionId)
     {
-//        RestRequest request = RestRequest
-//                .simpleRequest(HttpMethod.POST, "nodes/{nodeId}/versions/{versionId}/request-direct-access-url", this.repoModel.getNodeRef(), versionId);
         RestRequest request;
         if (postBody == null)
         {
@@ -972,7 +968,7 @@ public class Node extends ModelRequest<Node>
         }
         else
         {
-            request = RestRequest.requestWithBody(HttpMethod.POST, postBody, "nodes/{nodeId}/versions/{versionId}/renditions/{renditionId}/request-direct-access-url", this.repoModel.getNodeRef(), versionId);
+            request = RestRequest.requestWithBody(HttpMethod.POST, postBody, "nodes/{nodeId}/versions/{versionId}/renditions/{renditionId}/request-direct-access-url", this.repoModel.getNodeRef(), versionId, renditionId);
         }
         return this.restWrapper.process(request);
     }
