@@ -591,7 +591,7 @@ public class Node extends ModelRequest<Node>
 
 
     /**
-     * Delete the rendition identified by renditionId using DELETE call on '/nodes/{nodeId}/renditions/{renditionId}
+     * Delete the rendition identified by renditionId using DELETE call on "/nodes/{nodeId}/renditions/{renditionId}"
      *
      * @param renditionId id of rendition to delete
      * @throws Exception
