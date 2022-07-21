@@ -1,20 +1,17 @@
 package org.alfresco.rest.core;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.StringJoiner;
-
 import javax.json.Json;
 import javax.json.JsonArrayBuilder;
 import javax.json.JsonBuilderFactory;
 import javax.json.JsonObject;
 import javax.json.JsonObjectBuilder;
-import javax.json.stream.JsonParser;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.StringJoiner;
 
 import org.alfresco.dataprep.CMISUtil.Priority;
 import org.alfresco.rest.model.RestProcessVariableModel;
-import org.alfresco.rest.model.RestRuleModel;
 import org.alfresco.rest.model.RestVariableModel;
 import org.alfresco.utility.Utility;
 import org.alfresco.utility.constants.UserRole;
@@ -22,6 +19,7 @@ import org.alfresco.utility.model.FileModel;
 import org.alfresco.utility.model.FolderModel;
 import org.alfresco.utility.model.RepoTestModel;
 import org.alfresco.utility.model.SiteModel;
+import org.alfresco.utility.model.TestModel;
 import org.alfresco.utility.model.UserModel;
 
 /**
@@ -294,16 +292,16 @@ public class JsonBodyGenerator
     }
 
     /**
-     * Convert a collection of {@link RestRuleModel} objects to JSON for a multi-entity POST request.
+     * Convert a collection of {@link TestModel} objects to JSON for a multi-entity POST request.
      *
      * @param models The entities to convert.
      * @return The JSON string.
      */
-    public static String arrayToJson(List<RestRuleModel> models)
+    public static String arrayToJson(List<? extends TestModel> models)
     {
         // Rather than convert backwards and forwards between Jackson and javax objects then we handle array creation ourselves.
         StringJoiner stringJoiner = new StringJoiner(",\n");
-        for (RestRuleModel model : models)
+        for (TestModel model : models)
         {
             stringJoiner.add(model.toJson());
         }
