@@ -628,6 +628,8 @@ public class RestWrapper extends DSLWrapper<RestWrapper>
             restRequest.setPathParams(ArrayUtils.addAll(restRequest.getPathParams(), parameters));
         }
 
+        STEP(restRequest.toString());
+
         Response returnedResponse;
         switch (restRequest.getHttpMethod())
         {
