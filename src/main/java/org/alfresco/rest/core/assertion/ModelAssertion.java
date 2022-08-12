@@ -125,7 +125,8 @@ public class ModelAssertion<T>
 
     /**
      * Use this method for asserting whole model with different model object. Method allows to ignore particular fields during the comparison.
-     * For proper work model should override {@code toString()} and {@code equals()} methods.
+     *
+     * WARNING: For proper work model should implement {@code toString()} and {@code equals()} methods.
      *
      * @param expected - expected model.
      * @param ignoreFields - fields which should be ignored during assertion.
