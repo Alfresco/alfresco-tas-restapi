@@ -59,9 +59,9 @@ public class ModelAssertion<T>
             Assert.fail(String.format("Field {%s} was not found in returned response.",fieldNameToBeRetuned));
         }
     }
-    private final T model;
+    private final Object model;
 
-    public ModelAssertion(T model)
+    public ModelAssertion(Object model)
     {
         this.model = model;
     }
@@ -131,12 +131,13 @@ public class ModelAssertion<T>
      * @param ignoreFields - fields which should be ignored during assertion.
      * @return model.
      */
+    @SuppressWarnings("unchecked")
     public T isEqualTo(T expected, String... ignoreFields)
     {
-        T modelCopy = createCopyIgnoringFields(model, ignoreFields);
+        T modelCopy = createCopyIgnoringFields((T) model, ignoreFields);
         T expectedCopy = createCopyIgnoringFields(expected, ignoreFields);
         Assert.assertEquals(modelCopy, expectedCopy, String.format("Compared objects of type: %s are not equal!", model.getClass()));
-        return model;
+        return (T) model;
     }
 
     /**
