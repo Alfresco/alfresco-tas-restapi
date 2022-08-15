@@ -25,6 +25,9 @@
  */
 package org.alfresco.rest.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import org.alfresco.rest.core.IRestModel;
 import org.alfresco.utility.model.TestModel;
 
 /**
@@ -39,8 +42,10 @@ import org.alfresco.utility.model.TestModel;
       "email": "qLZ41D2QnXQcqySNK09J@yahoo.com"
     }
  */
-public class RestCompanyModel extends TestModel
+public class RestCompanyModel extends TestModel implements IRestModel<RestCompanyModel>
 {
+    @JsonProperty (value = "entry")
+    RestCompanyModel model;
     private String organization;
     private String address1;
     private String address2;
@@ -49,6 +54,12 @@ public class RestCompanyModel extends TestModel
     private String telephone;
     private String fax;
     private String email;
+
+    @Override
+    public RestCompanyModel onModel()
+    {
+        return model;
+    }
 
     public String getOrganization()
     {
@@ -129,5 +140,4 @@ public class RestCompanyModel extends TestModel
     {
         this.email = email;
     }
-
 }
