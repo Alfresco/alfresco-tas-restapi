@@ -30,13 +30,12 @@ import static org.alfresco.utility.report.log.Step.STEP;
 import java.util.List;
 import java.util.Random;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import org.alfresco.rest.core.assertion.IModelsCollectionAssertion;
-import org.alfresco.rest.core.assertion.ModelsCollectionAssertion;
 import org.alfresco.rest.exception.EmptyRestModelCollectionException;
 import org.alfresco.rest.model.RestPaginationModel;
 import org.alfresco.rest.model.RestSiteModelsCollection;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * Map multiple entries of JSON response to a class <T>
@@ -115,19 +114,7 @@ public abstract class RestModels<Model, ModelCollection> implements IRestModelsC
         
        return null;
     }
-    
-    @Override    
-    public ModelsCollectionAssertion<RestModels<Model, ModelCollection>> assertThat()
-    {      
-        return new ModelsCollectionAssertion<RestModels<Model, ModelCollection>>(this);
-    }
-    
-    @Override    
-    public ModelsCollectionAssertion<RestModels<Model, ModelCollection>> and()
-    {
-        return assertThat();
-    }
-    
+
     @SuppressWarnings("unchecked")
     @Override    
     public ModelCollection when()
@@ -156,7 +143,5 @@ public abstract class RestModels<Model, ModelCollection> implements IRestModelsC
     public void setPagination(RestPaginationModel pagination)
     {
         this.pagination = pagination;
-    } 
-    
-    
+    }
 }

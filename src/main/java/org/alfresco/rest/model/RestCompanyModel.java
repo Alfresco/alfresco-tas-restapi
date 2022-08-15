@@ -25,7 +25,6 @@
  */
 package org.alfresco.rest.model;
 
-import org.alfresco.rest.core.assertion.ModelAssertion;
 import org.alfresco.utility.model.TestModel;
 
 /**
@@ -51,16 +50,6 @@ public class RestCompanyModel extends TestModel
     private String fax;
     private String email;
 
-    public ModelAssertion<RestCompanyModel> assertThat()
-    {
-        return new ModelAssertion<RestCompanyModel>(this);
-    }
-
-    public ModelAssertion<RestCompanyModel> and()
-    {
-        return assertThat();
-    }
-    
     public String getOrganization()
     {
         return organization;
