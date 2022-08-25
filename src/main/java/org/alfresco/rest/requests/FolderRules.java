@@ -111,6 +111,18 @@ public class FolderRules extends ModelRequest<FolderRules>
     }
 
     /**
+     * Create a rule link.
+     *
+     * @param parentRuleFolderId The parent folder with an existing rule.
+     * @return The id of the linked rule-set.
+     */
+    public RestRuleModel createRuleLink(String parentRuleFolderId)
+    {
+        RestRequest request = RestRequest.requestWithBody(HttpMethod.POST, parentRuleFolderId, "nodes/{nodeId}/rule-set-links", nodeId, ruleSetId);
+        return restWrapper.processModel(RestRuleModel.class, request);
+    }
+
+    /**
      * Update a rule.
      *
      * @param ruleId The id of the rule to update.
