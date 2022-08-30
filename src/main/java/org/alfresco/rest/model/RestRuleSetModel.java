@@ -25,6 +25,8 @@
  */
 package org.alfresco.rest.model;
 
+import java.util.Objects;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import org.alfresco.rest.core.IRestModel;
@@ -84,5 +86,21 @@ public class RestRuleSetModel extends TestModel implements IRestModel<RestRuleSe
     public void setInclusionType(String inclusionType)
     {
         this.inclusionType = inclusionType;
+    }
+
+    @Override
+    public boolean equals(Object o)
+    {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        RestRuleSetModel that = (RestRuleSetModel) o;
+        return Objects.equals(id, that.id) && Objects.equals(owningFolder, that.owningFolder) &&
+                Objects.equals(inclusionType, that.inclusionType);
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash(id, owningFolder, inclusionType);
     }
 }
