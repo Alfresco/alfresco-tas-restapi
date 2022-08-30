@@ -26,6 +26,8 @@
 
 package org.alfresco.rest.model;
 
+import java.util.Objects;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.alfresco.rest.core.IRestModel;
 import org.alfresco.utility.model.TestModel;
@@ -60,5 +62,20 @@ public class RestRuleSetLinkModel extends TestModel implements IRestModel<RestRu
     public void setId(String id)
     {
         this.id = id;
-    }				
+    }
+
+    @Override
+    public boolean equals(Object o)
+    {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        RestRuleSetLinkModel that = (RestRuleSetLinkModel) o;
+        return id.equals(that.id);
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash(id);
+    }
 }
