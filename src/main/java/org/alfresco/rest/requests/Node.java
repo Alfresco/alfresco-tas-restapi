@@ -1070,6 +1070,12 @@ public class Node extends ModelRequest<Node>
         return restWrapper.processModel(RestRuleSetLinkModel.class, request);
     }
 
+    /**
+     * Trigger rules on a folder performing POST call on "/nodes/{folderNodeId}/rule-executions"
+     *
+     * @param body - rules execution request
+     * @return execution result
+     */
     public RestRuleExecutionModel executeRules(RestRuleExecutionBodyModel body)
     {
         RestRequest request = RestRequest.requestWithBody(HttpMethod.POST, body.toJson(), "nodes/{nodeId}/rule-executions", repoModel.getNodeRef());
