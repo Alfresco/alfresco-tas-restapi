@@ -309,6 +309,14 @@ public class ModelAssertion<T>
 
             return (T) model;
         }
+
+        public T notContains(String value)
+        {
+            if (fieldValue.toString().contains(value))
+                Assert.fail(errorMessage("does contain expected value: " + value + ", Current Value: " + fieldValue.toString()));
+
+            return (T) model;
+        }
         /**
          * Assert if predicate value is greater than the field value
          * @author Michael Suzuki
