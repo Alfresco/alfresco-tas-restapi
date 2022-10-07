@@ -4,7 +4,7 @@
     <groupId>org.alfresco.tas</groupId>
     <artifactId>restapi</artifactId>
     <name>alfresco-tas-restapi</name>
-    <version>1.131-SNAPSHOT</version>
+    <version>1.133-SNAPSHOT</version>
     <parent>
         <groupId>org.alfresco</groupId>
         <artifactId>alfresco-super-pom</artifactId>
