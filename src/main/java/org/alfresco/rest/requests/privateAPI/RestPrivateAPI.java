@@ -25,6 +25,7 @@
  */
 package org.alfresco.rest.requests.privateAPI;
 
+import io.restassured.RestAssured;
 import org.alfresco.rest.core.RestWrapper;
 import org.alfresco.rest.model.RestCustomTypeModel;
 import org.alfresco.rest.model.RestSubscriberModel;
@@ -40,8 +41,6 @@ import org.alfresco.rest.requests.syncServiceAPI.Subscriptions;
 import org.alfresco.rest.requests.syncServiceAPI.Sync;
 import org.alfresco.utility.model.CustomAspectModel;
 import org.alfresco.utility.model.CustomContentModel;
-
-import io.restassured.RestAssured;
 import org.alfresco.utility.model.RepoTestModel;
 
 /**
